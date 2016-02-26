@@ -43,9 +43,9 @@ if git folder in web root, you can use short URL (ex.: example.com)
 Commands:
 help                 show this info
 ls [dir]             list files in repository path
-get <path>           get, save and show file by path
+get <path|mask>      get, save and show file by path or mask. Ex.: get *.ini
 find <query>         find by file names. Ex.: find *.sql
-search <query>       find by full paths. Ex.: search wp-content/themes
+search <query>       find by folder name. Ex.: search wp-content
 exit|quit|e|q        exit to select repository mode
 ```
 
@@ -70,9 +70,11 @@ python3 telegrambot.py
 Send help to bot and see full command list 
 
 ### TODO
-- Add database storage for repository data
+- ~~Add get files by mask. Like ```get application/*.cfg```~~
 - Add command for all repository files download
+- Add multithread downloads
 - Add .git directory listing detection
+- Add database storage for repository data
 - Add packs detection
 
 ### Thanks

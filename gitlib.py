@@ -339,7 +339,7 @@ class RunCommand(object):
 
     def search(self, arg):
         needle = " ".join(arg)
-        if len(needle) >= 4:
+        if len(needle) >= 3:
             out = self.__find(needle)
             if out:
                 return self.ret("\n".join(out))
@@ -369,57 +369,94 @@ class RunCommand(object):
         print("Commands:\n"
               "help                 show this info\n"
               "ls [dir]             list files in repository path\n"
-              "get <path>           get, save and show file by path\n"
-              "find <query>         find by file names. Ex.: find *.sql\n"
-              "search <query>       find by full paths. Ex.: search wp-content/themes\n"
+              "get <path|mask>      get, save and show file by path or mask. Ex.: get *.ini\n"
+              "find <query>         find files by name or path. Ex.: find *.sql\n"
+              "search <query>       find folders by name or path. Ex.: search wp-content\n"
               "exit|quit|e|q        exit to select repository mode\n")
 
     def get(self, arg):
         for a in arg:
-            if a in self.data:
-                folder = self.data[a][0:2]
-                file = self.data[a][2:]
-                object_file_path = self.options["git_obj_dir"] + "/" + folder + "/" + file
-                file_path = self.options["dir_name"] + "/" + a
-                url_path = self.options["git_obj_url"] + "/" + folder + "/" + file
-                if os.path.isfile(file_path) is True:
-                    if self.raw_cmd or query_yes_no("File already exists. View?"):
-                        return self.ret(self.__show(file_path))
-                if os.path.isfile(object_file_path) is True:
-                    if self.raw_cmd or query_yes_no("Object file already exists. Unpack?"):
-                        with open(object_file_path, "rb") as ofile:
-                            deflate_data = self.__deflate(ofile.read())
-                            self.__write(file_path, deflate_data[deflate_data.find(b'\x00')+1:])
-                            ofile.close()
-                        return self.ret(self.__show(file_path))
-                else:
-                    ensure_dir(self.options["git_obj_dir"] + "/" + folder)
-                    resp = self.__download(url_path)
-                    if resp is False:
-                        return resp
-                    if resp["error"] is 1:
-                        return self.ret(resp["response"])
-                    else:
-                        resp = resp["response"]
-                        data = resp.read()
-                        deflate_data = self.__deflate(data)
-                        self.__write(object_file_path, data)
-                        self.__write(file_path, deflate_data[deflate_data.find(b'\x00')+1:])
-                        return self.ret(self.__show(file_path))
+            files = self.__find(a, True)
+            if files:
+                answer = True
+                show = True
+                files_count = len(files)
+                if files_count > 1:
+                    show = False
+                if files_count > 100:
+                    answer = query_yes_no("Are you sure to load {0} files from repository?".format(len(files)))
+                if answer is True:
+                    for file in files:
+                        self.__get(file, show)
             else:
-                return self.ret("File '{0}' not found in this repository".format(a))
+                return self.ret("Cannot find any file(s)".format(files))
+
+    def __get(self, a, show):
+        folder = self.data[a][0:2]
+        file = self.data[a][2:]
+        object_file_path = self.options["git_obj_dir"] + "/" + folder + "/" + file
+        file_path = self.options["dir_name"] + "/" + a
+        url_path = self.options["git_obj_url"] + "/" + folder + "/" + file
+        if os.path.isfile(file_path) is True:
+            if self.raw_cmd is True or (show is True and query_yes_no("File already exists. View?")):
+                return self.ret(self.__show(file_path))
+        if os.path.isfile(object_file_path) is True:
+            if self.raw_cmd or (show is True and query_yes_no("Object file already exists. Unpack?")):
+                with open(object_file_path, "rb") as ofile:
+                    deflate_data = self.__deflate(ofile.read())
+                    self.__write(file_path, deflate_data[deflate_data.find(b'\x00')+1:])
+                    ofile.close()
+                return self.ret(self.__show(file_path))
+        else:
+            ensure_dir(self.options["git_obj_dir"] + "/" + folder)
+            print("Downloading '{0}' file ...".format(a))
+            resp = self.__download(url_path)
+            if resp is False:
+                return resp
+            if resp["error"] is 1:
+                return self.ret(resp["response"])
+            else:
+                resp = resp["response"]
+                data = resp.read()
+                deflate_data = self.__deflate(data)
+                self.__write(object_file_path, data)
+                self.__write(file_path, deflate_data[deflate_data.find(b'\x00')+1:])
+                if show is True:
+                    return self.ret(self.__show(file_path))
+                else:
+                    return self.ret("File '{0}' downloaded successfully.".format(a))
 
     def __find(self, needle, in_files=False):
         haystack = self.data.keys()
+        needle = needle.casefold()
+        dirname = os.path.dirname(needle).casefold()
+        filename = os.path.basename(needle).casefold()
         if in_files:
-            if needle.startswith("*"):
-                out = [s for s in haystack if os.path.basename(s.casefold()).endswith(needle[1:].casefold())]
+            if filename.startswith("*"):
+                if dirname:
+                    out = [s for s in haystack if os.path.dirname(s.casefold()) == dirname]
+                    if out and filename:
+                        out = [s for s in out if os.path.basename(s.casefold()).endswith(filename[1:])]
+                else:
+                    out = [s for s in haystack if os.path.basename(s.casefold()).endswith(needle[1:])]
             elif needle.endswith("*"):
-                out = [s for s in haystack if os.path.basename(s.casefold()).startswith(needle[:-1])]
+                if dirname:
+                    out = [s for s in haystack if os.path.dirname(s.casefold()) == dirname]
+                    if out and filename:
+                        out = [s for s in out if os.path.basename(s.casefold()).startswith(filename[:-1])]
+                else:
+                    out = [s for s in haystack if os.path.basename(s.casefold()).startswith(needle[:-1])]
             else:
-                out = [s for s in haystack if needle.casefold() in os.path.basename(s.casefold())]
+                out = [s for s in haystack if needle in os.path.basename(s.casefold())]
         else:
-            out = [s for s in haystack if needle.casefold() in s.casefold()]
+            if needle.endswith("*"):
+                out = list(set(
+                    [os.path.dirname(s) for s in haystack if needle[:-1] in os.path.dirname(s.casefold())]
+                ))
+            else:
+                out = list(set(
+                    [os.path.dirname(s) for s in haystack if os.path.dirname(s.casefold()).endswith(needle)]
+                ))
         return out
 
     def __dir(self, text=""):
