@@ -376,14 +376,14 @@ class RunCommand(object):
 
     def get(self, arg):
         for a in arg:
-            files = self.__find(a, True)
+            files = self.__find(a, True, True)
             if files:
                 answer = True
                 show = True
                 files_count = len(files)
                 if files_count > 1:
                     show = False
-                if files_count > 100:
+                if files_count > 10:
                     answer = query_yes_no("Are you sure to load {0} files from repository?".format(len(files)))
                 if answer is True:
                     for file in files:
@@ -398,7 +398,7 @@ class RunCommand(object):
         file_path = self.options["dir_name"] + "/" + a
         url_path = self.options["git_obj_url"] + "/" + folder + "/" + file
         if os.path.isfile(file_path) is True:
-            if self.raw_cmd is True or (show is True and query_yes_no("File already exists. View?")):
+            if self.raw_cmd is True or (show is True and query_yes_no("File '{}' already exists. View?".format(a))):
                 return self.ret(self.__show(file_path))
         if os.path.isfile(object_file_path) is True:
             if self.raw_cmd or (show is True and query_yes_no("Object file already exists. Unpack?")):
@@ -426,20 +426,28 @@ class RunCommand(object):
                 else:
                     return self.ret("File '{0}' downloaded successfully.".format(a))
 
-    def __find(self, needle, in_files=False):
+    def __find(self, needle, in_files=False, for_get=False):
         haystack = self.data.keys()
         needle = needle.casefold()
         dirname = os.path.dirname(needle).casefold()
         filename = os.path.basename(needle).casefold()
         if in_files:
-            if filename.startswith("*"):
+            if filename.startswith("*") and filename.endswith("*"):
+                filename = filename[1:][:-1]
+                if dirname:
+                    out = [s for s in haystack if os.path.dirname(s.casefold()) == dirname]
+                    if out and filename:
+                        out = [s for s in out if filename in os.path.basename(s.casefold())]
+                else:
+                    out = [s for s in haystack if filename in os.path.basename(s.casefold())]
+            elif filename.startswith("*"):
                 if dirname:
                     out = [s for s in haystack if os.path.dirname(s.casefold()) == dirname]
                     if out and filename:
                         out = [s for s in out if os.path.basename(s.casefold()).endswith(filename[1:])]
                 else:
                     out = [s for s in haystack if os.path.basename(s.casefold()).endswith(needle[1:])]
-            elif needle.endswith("*"):
+            elif filename.endswith("*"):
                 if dirname:
                     out = [s for s in haystack if os.path.dirname(s.casefold()) == dirname]
                     if out and filename:
@@ -447,7 +455,12 @@ class RunCommand(object):
                 else:
                     out = [s for s in haystack if os.path.basename(s.casefold()).startswith(needle[:-1])]
             else:
-                out = [s for s in haystack if needle in os.path.basename(s.casefold())]
+                if dirname:
+                    out = [s for s in haystack if needle in s.casefold()]
+                else:
+                    out = [s for s in haystack if needle in os.path.basename(s.casefold())]
+            if out:
+                self.ret("Found {0} file(s) ...".format(len(out)))
         else:
             if needle.endswith("*"):
                 out = list(set(
@@ -457,6 +470,9 @@ class RunCommand(object):
                 out = list(set(
                     [os.path.dirname(s) for s in haystack if os.path.dirname(s.casefold()).endswith(needle)]
                 ))
+            if out:
+                self.ret("Found {0} item(s) ...".format(len(out)))
+
         return out
 
     def __dir(self, text=""):
@@ -536,14 +552,14 @@ def build_nested(paths):
 
 
 class GitManager:
-    def __init__(self, url, reload=False, raw_cmd=False, interactive=False):
+    def __init__(self, url, force=False, raw_cmd=False, interactive=False):
         self.interactive = True if interactive else False
         self.raw_cmd = True if raw_cmd else False
         self.message = ""
         self.data_dir = "data/"
         self.url = url
         self.files = self.index_data = {}
-        if reload:
+        if force:
             self.reload = True
         else:
             self.reload = False
@@ -579,14 +595,25 @@ class GitManager:
             "git_dir": self.git_dir,
             "git_obj_dir": self.git_dir + "/objects"
         }
+        if self.reload is True and self.interactive is False:
+            if(query_yes_no("All objects index files will be removed. Are you sure want to force reload repo?", "no")):
+                self.clear_git()
+            else:
+                self.reload = False
         if self.check_index():
             try:
                 self.download_index()
             except ValueError:
                 raise
-        if self.check_tree():
+        if self.check_tree() or self.reload is True:
             self.save_index()
         self.load_index()
+
+    def clear_git(self):
+        os.remove(self.tree_file)
+        os.remove(self.index_file)
+        os.remove(self.index_parsed_file)
+        os.remove(self.index_json_file)
 
     def check_index(self):
         return not os.path.exists(self.index_file) or self.reload is True

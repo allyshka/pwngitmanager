@@ -71,7 +71,7 @@ Send help to bot and see full command list
 
 ### TODO
 - ~~Add get files by mask. Like ```get application/*.cfg```~~
-- Add command for all repository files download
+- ~~Add command for all repository files download~~
 - Add multithread downloads
 - Add .git directory listing detection
 - Add database storage for repository data

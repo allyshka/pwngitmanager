@@ -20,7 +20,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("url", type=str, help="URL with path to git")
     parser.add_argument("-c", "--command", type=str, help="Raw command to execute")
-    parser.add_argument("-f", "--force", type=bool, default=False, help="Raw command to execute")
+    parser.add_argument("-f", "--force", type=bool, default=False, help="Force reload index file")
     if len(sys.argv) < 2:
         cmd_list = ["list", "use", "help"]
         print("URL not specified. Run in interactive mode.")
