@@ -60,6 +60,9 @@ python3 pwngit.py <repo> -c <command>
 python3 pwngit.py example.com -c "get wp-config.php"
 ```
 
+#### proxy:
+You can set up proxy with **-p/--proxy** flag. Format is **http(s)://127.0.0.1:8080". Socks5 not supported yet because of minimum requirements.  
+
 ### Telegram bot
 Install **python-telegram-bot** and replace [TOKEN_HERE] in telegrambot.py by your BotFather token.
 
@@ -72,6 +75,7 @@ Send help to bot and see full command list
 ### TODO
 - ~~Add get files by mask. Like ```get application/*.cfg```~~
 - ~~Add command for all repository files download~~
+- ~~Add proxy support~~
 - Add multithread downloads
 - Add .git directory listing detection
 - Add database storage for repository data
@@ -80,5 +84,3 @@ Send help to bot and see full command list
 ### Thanks
 Big thank to Sean B. Palmer for [gin](https://github.com/sbp/gin) tool. I was take index file parser function from 
 there.
-
-

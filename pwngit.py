@@ -18,15 +18,20 @@ def parse_cmd(cmd):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("url", type=str, help="URL with path to git")
+    parser.add_argument("url", nargs='?', type=str, help="URL with path to git")
     parser.add_argument("-c", "--command", type=str, help="Raw command to execute")
     parser.add_argument("-f", "--force", type=bool, default=False, help="Force reload index file")
-    if len(sys.argv) < 2:
+    parser.add_argument("-p", "--proxy", type=str, help="Proxy connection to git. ex.: http://127.0.0.1:8080")
+    arguments = parser.parse_args()
+    if arguments.proxy:
+        proxy = arguments.proxy
+    else:
+        proxy = None
+    if not arguments.url:
         cmd_list = ["list", "use", "help"]
         print("URL not specified. Run in interactive mode.")
-        gitlib.Interactive()
+        gitlib.Interactive(proxy_server=proxy)
     else:
-        arguments = parser.parse_args()
         c = {}
         if arguments.url:
             url = arguments.url
@@ -37,8 +42,8 @@ if __name__ == '__main__':
             force = arguments.force
             if c:
                 try:
-                    new = gitlib.GitManager(url, force, True)
-                    print(new.exec(c))
+                    new = gitlib.GitManager(url, force, True, proxy_server=proxy)
+                    print(new.exec(c).rstrip())
                 except ValueError as e:
                     print(e)
             else:

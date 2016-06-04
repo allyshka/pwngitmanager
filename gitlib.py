@@ -3,6 +3,7 @@ try:
     import readline
 except ImportError:
     import pyreadline as readline
+import urllib
 import urllib.request
 from urllib.parse import urlparse
 
@@ -253,9 +254,20 @@ def query_yes_no(question, default="yes"):
                              "(or 'y' or 'n').\n")
 
 
+def set_proxy(proxy_server):
+    proxy = urllib.request.ProxyHandler(
+        {
+            'http': proxy_server,
+            'https': proxy_server,
+        }
+    )
+    opener = urllib.request.build_opener(proxy)
+    urllib.request.install_opener(opener)
+
+
 def get_url(url, mess="index", exit_on_error=True, raw=False):
     try:
-        response = urllib.request.urlopen(url, timeout=5)
+        response = urllib.request.urlopen(url, timeout=15)
         return {"error": 0, "response": response}
     except urllib.error.HTTPError as e:
         mess = "Error! Cannot get {0} file: {1}".format(mess, e)
@@ -333,7 +345,7 @@ class RunCommand(object):
 
     def ret(self, message):
         if self.raw_cmd:
-            return message
+            return message+"\r\n"  # if not str?
         else:
             print(message)
 
@@ -375,6 +387,7 @@ class RunCommand(object):
               "exit|quit|e|q        exit to select repository mode\n")
 
     def get(self, arg):
+        files_data = ""
         for a in arg:
             files = self.__find(a, True, True)
             if files:
@@ -387,7 +400,12 @@ class RunCommand(object):
                     answer = query_yes_no("Are you sure to load {0} files from repository?".format(len(files)))
                 if answer is True:
                     for file in files:
-                        self.__get(file, show)
+                        if self.raw_cmd:
+                            files_data += self.__get(file, show)
+                        else:
+                            self.__get(file, show)
+                    if self.raw_cmd:
+                        return files_data
             else:
                 return self.ret("Cannot find any file(s)".format(files))
 
@@ -403,7 +421,14 @@ class RunCommand(object):
         if os.path.isfile(object_file_path) is True:
             if self.raw_cmd or (show is True and query_yes_no("Object file already exists. Unpack?")):
                 with open(object_file_path, "rb") as ofile:
-                    deflate_data = self.__deflate(ofile.read())
+                    try:
+                        deflate_data = self.__deflate(ofile.read())
+                    except zlib.error as e:
+                        return self.ret(
+                            "Cannot decompress '{}' file\r\n"
+                            "{}\r\n"
+                            "Maybe server have custom 404 error.\r\n".format(a, e)
+                        )
                     self.__write(file_path, deflate_data[deflate_data.find(b'\x00')+1:])
                     ofile.close()
                 return self.ret(self.__show(file_path))
@@ -418,7 +443,14 @@ class RunCommand(object):
             else:
                 resp = resp["response"]
                 data = resp.read()
-                deflate_data = self.__deflate(data)
+                try:
+                    deflate_data = self.__deflate(data)
+                except zlib.error as e:
+                    return self.ret(
+                        "Cannot decompress '{}' file\r\n"
+                        "{}\r\n"
+                        "Maybe server have custom 404 error.\r\n".format(a, e)
+                    )
                 self.__write(object_file_path, data)
                 self.__write(file_path, deflate_data[deflate_data.find(b'\x00')+1:])
                 if show is True:
@@ -552,13 +584,16 @@ def build_nested(paths):
 
 
 class GitManager:
-    def __init__(self, url, force=False, raw_cmd=False, interactive=False):
+    def __init__(self, url, force=False, raw_cmd=False, interactive=False, proxy_server=None):
         self.interactive = True if interactive else False
         self.raw_cmd = True if raw_cmd else False
         self.message = ""
         self.data_dir = "data/"
         self.url = url
         self.files = self.index_data = {}
+        ensure_dir(self.data_dir)
+        if proxy_server:
+            set_proxy(proxy_server)
         if force:
             self.reload = True
         else:
@@ -596,7 +631,7 @@ class GitManager:
             "git_obj_dir": self.git_dir + "/objects"
         }
         if self.reload is True and self.interactive is False:
-            if(query_yes_no("All objects index files will be removed. Are you sure want to force reload repo?", "no")):
+            if query_yes_no("All objects index files will be removed. Are you sure want to force reload repo?", "no"):
                 self.clear_git()
             else:
                 self.reload = False
@@ -607,6 +642,7 @@ class GitManager:
                 raise
         if self.check_tree() or self.reload is True:
             self.save_index()
+        self.pack_file = ''
         self.load_index()
 
     def clear_git(self):
@@ -706,8 +742,11 @@ class GitManager:
 
 class Interactive:
 
-    def __init__(self):
+    def __init__(self, proxy_server=None):
         self.data_dir = "data/"
+        ensure_dir(self.data_dir)
+        if proxy_server:
+            set_proxy(proxy_server)
         self.cmd_list = ["ls", "help", "use"]
         while True:
             command = input("> ")
